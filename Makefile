@@ -38,7 +38,7 @@ lil_jugglers.c: lil_jugglers.txt
 	
 
 jugglefest.txt: 
-	wget -q http://www.yodelcareers.com/puzzles/jugglefest.txt > $@
+	wget -q http://www.yodelcareers.com/puzzles/jugglefest.txt -O $@
 
 # LIL version with samples from html page describing the problem
 
