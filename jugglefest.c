@@ -37,18 +37,17 @@ struct Circuit {
 #endif	/* LIL */
 	};
  
-#ifundef PREFERENCES
+#ifndef PREFERENCES
 #define PREFERENCES 11		/* we only need 10+1 for null for test data */
 #endif /* PREFERENCES */
 struct Juggler {
 	char *name;		/* name has to be the first item in struct for initialization */
 	unsigned short h,e,p;	/* h,e,p has to be the second,third,fourth itemin struct for initialization */
 	char *prefstring[PREFERENCES];	/* prefstring has to be the fifth item in struct for initialization */
-	int *pref;
-	short prefindex;	/* index into preference array for next attempted circuit assignment */
+	short pindex;	/* index into preference array for next attempted circuit assignment */
 	} 
-#ifdef LIL
 	juggler[] = {
+#ifdef LIL
 #include "lil_jugglers.c"
 #else	/* LIL */
 #ifdef BIG
@@ -83,35 +82,41 @@ qsort_uTS(const void *a, const void *b)
 
 static short JperC;	/* Jugglers per Circuit, calculated from array sizes in main() */
 
+static FILE *output;
+
 static int
 assign_juggler(unsigned short ji)
 	{
 	unsigned short ci;
-	if (juggler[ji].prefstring[juggler[ji.pindex]==NULL)
-	   return(fprintf(stderr,"Juggler[%hu] %s preference list exhausted, festival failure\n",
+	if (juggler[ji].prefstring[juggler[ji].pindex]==NULL)
+	   return(fprintf(output,"Juggler[%hu] %s preference list exhausted, festival failure\n",
 				ji,juggler[ji].name));
-	ci=(unsigned short(atoi(&juggler[ji].prefstring[juggler[ji].pindex][1]);
+	ci=(unsigned short)atoi(&juggler[ji].prefstring[juggler[ji].pindex][1]);
 	if (circuit[ci].uTS==NULL)	/* first visit to this circuit */
 	   {
 	   if ((circuit[ci].uTS=calloc(sizeof(union ToSort),JperC+1))==NULL)
-	      return(fprintf(stderr,"%5u: unable to allocate union circuit[%d].u[X=%d] array \n",
+	      return(fprintf(output,"%5u: unable to allocate union circuit[%d].u[X=%d] array \n",
 				__LINE__,ci,JperC+1));
 	   }
 	circuit[ci].uTS[JperC].us.dot_product=Dot_Product(circuit[ci],juggler[ji]);
 	circuit[ci].uTS[JperC].us.juggler=ji;
 	circuit[ci].uTS[JperC].us.used=0xbeef;
 	circuit[ci].uTS[JperC].us.filler=0xdead;
-	printf("Circuit %s added %s:%hx\n",
-		circuit[ci].name,juggler[ji].name,circuit[ci].uTS[i].us.dot_product);
+#ifdef OBSOLETE
+	printf("Circuit %s added %s:%hu\n",
+		circuit[ci].name,juggler[ji].name,circuit[ci].uTS[JperC].us.dot_product);
+#endif
 	qsort(circuit[ci].uTS,JperC+1,sizeof(circuit[ci].uTS[0]),qsort_uTS); 
 	if (circuit[ci].uTS[JperC].ull!=0)	/* if we have a juggler to reassign */
 	   {
 	   ji=circuit[ci].uTS[JperC].us.juggler++;	/* done with arg juggler, reuse */
-	   printf("Circuit %s added %s:%hx\n",
-			circuit[ci].name,juggler[ji].name,circuit[ci].uTS[i].us.dot_product);
+#ifdef OBSOLETE
+	   printf("Circuit %s overpopulated, reassigning %s:%hu\n",
+			circuit[ci].name,juggler[ji].name,circuit[ci].uTS[JperC].us.dot_product);
+#endif
 	   juggler[ji].pindex++;
 	   if (assign_juggler(ji))				/* non zero return is failure, report */
-	      return(fprintf(stderr,"%5u: Unable to reassign Juggler[%hu] %s\n",
+	      return(fprintf(output,"%5u: Unable to reassign Juggler[%hu] %s\n",
 				__LINE__,ji,juggler[ji].name));
 	   }
 	return(0);	/* successful assignment and any recursive reassignments */
@@ -120,107 +125,39 @@ assign_juggler(unsigned short ji)
 int
 main()	/* no arguments needed, input is #included at compile time, output to stdout */
 	{
-	union ToSort *uTS;
-	int ii,i,ci,ji,pi;	/* index variables through circuit, juggler, and preferences */
-	int X,rc;	/* and X is preference list size, atoi return code */
+	int j,i,ci,ji,pi;	/* index variables through circuit, juggler, and preferences */
+	char *cptr;
 
-#ifdef SANITY
-	/* Sanity check circuit names */
-	for (ci=0; ci<(sizeof(circuit)/sizeof(circuit[0]));ci++)
-	    if ((rc=atoi(&circuit[ci].name[1]))!=ci)
-	       return(fprintf(stderr,"%5u: Circuit index %d does not match name %d\n",__LINE__,ci,rc));
+	JperC=(sizeof(juggler)/sizeof(juggler[0]))/(sizeof(circuit)/sizeof(circuit[0]));
 
-	/* Sanity check juggler names */
-	for (ji=0; ji<(sizeof(juggler)/sizeof(juggler[0]));ji++)
-	    if ((rc=atoi(&juggler[ji].name[1]))!=ji)
-	       return(fprintf(stderr,"%5u: Juggler index %d does not match name %d\n",__LINE__,ji,rc));
-#endif /* SANITY */
+	output=stdout;	/* change to stderr for release */
 
-	JperC=ji/ci;
-
-	for (X=0; juggler[0].prefstring[X];X++) ;
-	
-	if ((uTS=calloc(sizeof(union ToSort),(JperC+1)))==NULL)
-	   return(fprintf(stderr,"%5u: unable to allocate union ToSort[X=%d] array \n",__LINE__,JperC+1));
-
-	for (ci=0;ci<(sizeof(circuit)/sizeof(circuit[0]));ci++)
-	    if ((circuit[ci].uTS=calloc(sizeof(union ToSort),JperC))==NULL)
-	       return(fprintf(stderr,"%5u: unable to allocate union circuit[%d].u[X=%d] array \n",
-				__LINE__,ci,JperC));
-	
 	for (ji=0;ji<(sizeof(juggler)/sizeof(juggler[0]));ji++)
 	    {
-		if ((juggler[ji].pref=malloc(sizeof(int)*X))==NULL)
-		   return(fprintf(stderr,"unable to allocate int[X=%d] array for juggler # %d of %d\n",
-					X,ji,(sizeof(juggler)/sizeof(juggler[0]))));
-		for (pi=0;pi<X;pi++)	/* depend on X calculated above */
-		    {
-		    juggler[ji].pref[pi]=ci=atoi(&juggler[ji].prefstring[pi][1]);
-		    circuit[ci].preferred++;
-		    for (i=0;i<JperC;i++)
-			{
-#ifdef NEVER
-		        printf("%5u: J%d C%d %2d dot_product=%4x juggler=%4x used=%4x: %016x\n",__LINE__,
-				ji,ci,i,
-				uTS[i].us.dot_product,
-				uTS[i].us.juggler,
-				uTS[i].us.used,
-				uTS[i].ull);
-#endif
-			uTS[i].ull=circuit[ci].uTS[i].ull;
-			}
-		    uTS[i].us.dot_product=Dot_Product(circuit[ci],juggler[ji]);
-		    uTS[i].us.juggler=ji;
-		    uTS[i].us.used=0xbeef;
-		    uTS[i].us.filler=0xdead;
-		    printf("Circuit %s added %s:%hx\n",
-				circuit[ci].name,juggler[ji].name,uTS[i].us.dot_product);
-#ifdef NEVER
-		    printf("%5u: J%d C%d %2d dot_product=%4hx juggler=%4hx used=%4hx: %016llx\n",__LINE__,
-				ji,ci,i,
-				uTS[i].us.dot_product,
-				uTS[i].us.juggler,
-				uTS[i].us.used,
-				uTS[i].ull);
-#endif
-		    qsort(uTS,JperC+1,sizeof(uTS[0]),qsort_uTS); 
-		    for (i=0;i<JperC;i++)
-			{
-#ifdef NEVER
-		        printf("%5u: J%d C%d %2d dot_product=%4hx juggler=%4hx used=%4hx: %016x\n",__LINE__,
-				ji,ci,i,
-				uTS[i].us.dot_product,
-				uTS[i].us.juggler,
-				uTS[i].us.used,
-				uTS[i].ull);
-#endif
-			circuit[ci].uTS[i].ull=uTS[i].ull;
-			}
-#ifdef NEVER
-		    printf("%5u: J%d C%d %2d dot_product=%4hx juggler=%4hx used=%4hx: %016x\n",__LINE__,
-				ji,ci,i,
-				uTS[i].us.dot_product,
-				uTS[i].us.juggler,
-				uTS[i].us.used,
-				uTS[i].ull);
-#endif
-		    if (uTS[i].us.used)
-		       {
-		       printf("Circuit %s has >%d Jugglers, ", circuit[ci].name,JperC);
-		       for (ii=0;ii<JperC+1;ii++)
-		           printf("%s:%hx ",juggler[uTS[ii].us.juggler].name,uTS[ii].us.dot_product);
-		       printf("%s being dropped: %016llx\n", juggler[uTS[i].us.juggler].name,uTS[i].ull);
-		       circuit[ci].preferred--;
-		       }
-		    }
+	    juggler[ji].pindex=0;
+	    if (assign_juggler(ji))	/* true (non zero) return */
+		fprintf(output,"%5u: unable to assign juggler[%hu] %s\n",__LINE__,ji,juggler[ji].name);
 	    }
 	for (ci=0;ci<(sizeof(circuit)/sizeof(circuit[0]));ci++)
 	    {
-	    printf("%s %d ",circuit[ci].name,circuit[ci].preferred);
-	    for (i=0;i<JperC;i++)
-		printf("%s:%hx ",
-			juggler[circuit[ci].uTS[i].us.juggler].name,
-			circuit[ci].uTS[i].us.dot_product);
+	    printf("%s ",circuit[ci].name);
+	    if (circuit[ci].uTS)		/* if we tried to assign any jugglers ... */
+	       for (i=0;i<JperC;i++)
+		   {
+		   if (i)
+		     printf(", ");
+		   if (circuit[ci].uTS[i].ull)	/* non zero uTS elements are assigned jugglers */
+		      {
+		      ji=circuit[ci].uTS[i].us.juggler;
+		      printf("%s", juggler[ji].name);
+		      for (pi=0;juggler[ji].prefstring[pi];pi++)
+			  {
+			  cptr=juggler[ji].prefstring[pi];
+			  j=atoi(&cptr[1]);
+		          printf(" %s:%hu",cptr,Dot_Product(circuit[j],juggler[ji]));
+			  }
+		      }
+		   }
 	    printf("\n");
 	    }
 	return(0);
