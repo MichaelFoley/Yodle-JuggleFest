@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
 #include <ctype.h>
 #include <errno.h>
 
@@ -110,9 +111,13 @@ static short JperC;	/* Jugglers per Circuit, calculated from array sizes in main
 static short maxpref=0;	/* maximum preference index */
 static FILE *output=NULL;	/* so I can hijack stderr calls */
 
+static int strict_rule=1;
 static unsigned long long calls_report=0;
 static unsigned long long calls_interval=1000;
-static unsigned long long sum=0;
+static unsigned long long sum=0,total=0;
+static struct {
+	unsigned int depth,count;
+	} upper,lower,kick={0,10};	/* only initializing kick structure */
 
 static int
 assign_juggler(unsigned short ji,int depth)
@@ -167,8 +172,10 @@ assign_juggler(unsigned short ji,int depth)
 #define ShowAssignments(line,trigger,label) \
 	if ((output) && (verbose[trigger])) \
 	   { \
-	   fprintf(output,"%5u: %7u -v%c %10llu %7llu %5u %4d %5hu %-5s %2hd %-6s @%s ", \
-			line,++counter[trigger],trigger,sum,calls,depth,depth-currJugglerDepth,currJuggler,circuit[ci].name,juggler[ji].pindex,juggler[ji].name,label); \
+	   for (total=0,i=0;i<JUGGLERS;i++) \
+	       total+=juggler[i].pindex; \
+	   fprintf(output,"%5u: %7u -v%c %10llu %10llu %7llu %5u %4d %5hu %-5s %2hd %-6s @%s ", \
+			line,++counter[trigger],trigger,sum,total,calls,depth,depth-currJugglerDepth,currJuggler,circuit[ci].name,juggler[ji].pindex,juggler[ji].name,label); \
 	   for (i=0;i<=JperC;i++) \
 		fprintf(output,"%u:%04hu:%1hu:%05hu ",i, \
 			circuit[ci].uTS[i].us.dot_product, \
@@ -185,6 +192,33 @@ assign_juggler(unsigned short ji,int depth)
 			circuit[ci].name,juggler[ji].name,circuit[ci].uTS[JperC].us.dot_product);
 	for (rc=0,ties=0;;ties++)	/* by default we expect to succeed */
 	    {
+	    if (kick.depth)
+	       {
+	       upper.depth=lower.depth=depth;
+	       upper.count=lower.count=0;
+	       kick.depth=0;
+	       }
+	    if (depth<lower.depth)
+	       {
+	       lower.depth=depth;
+	       lower.count=0;
+	       ShowAssignments(__LINE__,'k',"lower")
+	       }
+	    if (depth==lower.depth)
+	       lower.count++;
+	    if (depth>upper.depth)
+	       {
+	       upper.depth=depth;
+	       upper.count=0;
+	       ShowAssignments(__LINE__,'k',"upper")
+	       }
+	    if (depth==upper.depth)
+	       upper.count++;
+	    if ((upper.count==kick.count) || (lower.count==kick.count))
+	       {
+	       ShowAssignments(__LINE__,'k',"sleep")
+	       sleep(300);
+	       }
 	    qsort(circuit[ci].uTS,JperC+1,sizeof(circuit[ci].uTS[0]),qsort_uTS); 
 	    ShowAssignments(__LINE__,'0',"qsort")
 	    if (circuit[ci].uTS[JperC].ull==0)	/* if we have successfully assigned ji continue down juggler list */
@@ -204,28 +238,32 @@ assign_juggler(unsigned short ji,int depth)
 	       uTS=circuit[ci].uTS;
 	       circuit[ci].uTS=temp_uTS;	/* restored assignment list saved when we entered this level of recursion. */
 	       ShowAssignments(__LINE__,'7',"faild")
-#ifdef STRICT_RULE
-	       rc=__LINE__;
-#else
-	       if (Dot_Product(circuit[ci],juggler[ji])>circuit[ci].uTS[JperC-1].us.dot_product)	/* if ji not tied for last dp here */
-		  {
-	          juggler[ji].pindex++;			/* try next circuit preference */
-		  sum++;
-	          ShowAssignments(__LINE__,'2',"nxPrf")
-	          if (rc=assign_juggler(ji,depth+1))
-		     {
-		     juggler[ji].pindex--;			/* if we failed, decrement on way back up to retry */
-		     sum--;
-		     }
-		  }
+	       if (strict_rule)
+	          rc=__LINE__;
 		 else
-		  rc=__LINE__;	/* ji was tied for dp AND we tried all ties, report failure */
-#endif
+	          {
+	          if (Dot_Product(circuit[ci],juggler[ji])>circuit[ci].uTS[JperC-1].us.dot_product)	/* if ji not tied for last dp here */
+		     {
+	             juggler[ji].pindex++;			/* try next circuit preference */
+		     sum++;
+	             ShowAssignments(__LINE__,'2',"nxPrf")
+	             if (rc=assign_juggler(ji,depth+1))
+		        {
+		        juggler[ji].pindex--;			/* if we failed, decrement on way back up to retry */
+		        sum--;
+		        }
+		     }
+		    else
+		     rc=__LINE__;	/* ji was tied for dp AND we tried all ties, report failure */
+		  }
 	       ShowAssignments(__LINE__,'5',"flPrf") /* loop will iterate here */
 	       break;		/* out of for (rc=0,ties=0;;ties++) loop */
 	       }
 	    if (ties)
-		counter['t']++;
+	       {
+	       counter['t']++;
+	       ShowAssignments(__LINE__,'3',"tryti")
+	       }
 	    if ((output) && (verbose['r']))
 	       fprintf(output,"%5u: %u -vr Circuit %s overfull, reassigning %s:%hu\n",__LINE__,++counter['r'],
 			circuit[ci].name,juggler[circuit[ci].uTS[JperC].us.juggler].name,circuit[ci].uTS[JperC].us.dot_product);
@@ -234,20 +272,21 @@ assign_juggler(unsigned short ji,int depth)
 		  return(fprintf(stderr,"%5u: Unable to calloc unsigned short tried[%u] array during reassignment\n",__LINE__,JperC+1));
 				/* above error may need hook to only print once no matter how many times hit */
 				/* although if I'm out of heap that instance of the program is done anyway */
-	    for (i=0;i<=JperC;i++)
-		tried[i]=circuit[ci].uTS[i].us.tried;
 	    reassign=circuit[ci].uTS[JperC].us.juggler;	/* done with arg juggler, reuse */
+	    for (i=0;i<=JperC;i++)
+		tried[i]=circuit[ci].uTS[i].us.tried;	/* save the tried values in case we come through this circuit again at deepter level of recursion */
 	    circuit[ci].uTS[JperC].ull=0;
 	    juggler[reassign].pindex++;			/* try next circuit preference */
-	    if (ties)
-	       ShowAssignments(__LINE__,'3',"tryti")
 	    if (assign_juggler(reassign,depth+1))		/* non zero return is failure to reassign */
 	       {	/* failure to reassign juggler */
 	       juggler[reassign].pindex--;			/* failed assignment, double check this decrements properly */
+	       for (i=0;i<=JperC;i++)
+		   circuit[ci].uTS[i].us.tried=tried[i];	/* restore tried values for this level of recursion */
 	       circuit[ci].uTS[JperC].us.juggler=reassign;
 	       circuit[ci].uTS[JperC].us.tried=1;		/* this juggler be further up qsorted list for same dot_product */
 	       circuit[ci].uTS[JperC].us.dot_product=Dot_Product(circuit[ci],juggler[reassign]);
 	       circuit[ci].uTS[JperC].us.used=0xabba;
+	       ShowAssignments(__LINE__,'6',"tried")
 	       if (output && verbose['w'])
 		  {
 		  fprintf(output, "%5u: %u -vw %s %s dp=%hu tried=1 (%s %hx)\n" ,__LINE__,++counter['w'],
@@ -257,7 +296,6 @@ assign_juggler(unsigned short ji,int depth)
 				juggler[circuit[ci].uTS[JperC-1].us.juggler].name,
 				circuit[ci].uTS[JperC-1].us.dot_product);
 		  }
-	       ShowAssignments(__LINE__,'6',"tried")
 		  /* for (rc=0;;) loop will iterate here */
 	       }	/* end of failure to reassign juggler */
 #ifdef NEVER
@@ -303,7 +341,7 @@ main(int argc, char **argv, char **arge)
 	bump=0;
 	jugglers=JUGGLERS;
 
-	for (optarg=NULL,j=0;(c=getopt(argc,argv,"B:b:C:c:EeHhJ:j:OoRrS:s:T:t:V:v:?"))!=-1;)
+	for (optarg=NULL,j=0;(c=getopt(argc,argv,"B:b:C:c:EeHhJ:j:LlOoRrS:s:T:t:V:v:?"))!=-1;)
 	    {
 	    if (output && verbose['.'])
 	       fprintf(output,optarg?"%5u:\t -%c %s\n":"%5u: -%c\n",__LINE__,c,optarg);
@@ -315,6 +353,13 @@ main(int argc, char **argv, char **arge)
 	      case 'T': case 't': email_target_juggler=atoi(optarg); break;
 	      case 'B': case 'b': bump=atoi(optarg); break;
 	      case 'J': case 'j': jugglers=(unsigned short)atoi(optarg); break;
+	      case 'L': case 'l': strict_rule=0; break;	/* loosen strict rule, after failure, retry pushing juggler down preference list */
+	      case 'K': case 'k':
+			kick.depth=atol(optarg);
+			s=strchr(optarg,',');
+			if (s)
+			   kick.count=atol(++s);
+			break;	/* kick logic to detect looping recursion */
 	      case 'E': case 'e': output=stderr; break;
 	      case 'O': case 'o': output=stdout; break;
 	      case 'R': case 'r': reverse=1-reverse; break;
@@ -345,11 +390,14 @@ main(int argc, char **argv, char **arge)
 	    count_preferences(ji);
 	    juggler[ji].pindex=0;
 	    }
-	if (assign_juggler(currJuggler,0))	/* true (non zero) return */
-	   {
-	   if (output && verbose['#'])	
-	      fprintf(output,"%5u: %u unable to assign %s\n",__LINE__,unassigned,juggler[ji].name);
-	   }
+	for (;currJuggler<jugglers;)
+	    if (assign_juggler(currJuggler,0))	/* true (non zero) return */
+	       {
+	       if (output && verbose['#'])	
+	          fprintf(output,"%5u: %u unable to assign %s\n",__LINE__,unassigned,juggler[ji].name);
+	       }
+	      else
+	       fprintf(stderr,"Unable to assign %s\n",juggler[currJuggler].name);
 	/* macro function because I may want to use this again */
 #define CHECK_STATS(line) \
 	if (output && verbose['a']) fprintf(output,"%5u: Assignments:\t %5u\n",line,counter['a']); \
