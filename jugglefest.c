@@ -120,6 +120,7 @@ static struct {
 	} upper={18322,0},lower={32648,0},kick={0,10};	/* only initializing kick structure */
 
 static int fail_jugglers=0;	/* switched by -f argument */
+static short failed_juggler=-1;	/* only meaningful if assign_juggler returns error to main */
 
 static int
 assign_juggler(unsigned short ji,int depth)
@@ -139,13 +140,13 @@ assign_juggler(unsigned short ji,int depth)
 	   maxpref=juggler[ji].pindex;
 	if (juggler[ji].prefstring[juggler[ji].pindex]==NULL)
 	   {
-	/* TODO do we report this here or after we return from recursion, if we make it to top is true failure ? */
+	   failed_juggler=ji;
 	   if (output && (verbose['f']))
-	      fprintf(output,"%5u: %5u -vf Juggler[%hu] %s preference list exhausted, festival failure\n", __LINE__,
-			++counter['f'],ji,juggler[ji].name);
+	      fprintf(output,"%5u: %5u -vf %s preference list exhausted, festival failure\n", __LINE__,
+			++counter['f'],juggler[ji].name);
 	   if (lowestTieDepth==0)
 	      lowestTieDepth=depth;	/* don't start checking until we have our first exhausted juggler */
-	   return(1-fail_jugglers);	/* failure to assign */
+	   return(1-fail_jugglers);	/* return failure to assign, or success regarless if fail_jugglers==1 */
 	   }
 	ci=(unsigned short)atoi(&juggler[ji].prefstring[juggler[ji].pindex][1]);
 	if (calls_report && (calls>calls_report))
@@ -183,7 +184,7 @@ assign_juggler(unsigned short ji,int depth)
 #define ShowAssignments(line,trigger,label) \
 	if ((output) && (verbose[trigger])) \
 	   { \
-	   fprintf(output,"%5u: %7u -v%c %7llu %5u %4d %5hu %-5s %2hd %-6s @%s ", \
+	   fprintf(output,"%5u: %7u -v%c %18llu %5u %4d %5hu %-5s %2hd %-6s @%s ", \
 			line,++counter[trigger],trigger,calls,depth,depth-currJugglerDepth,currJuggler,circuit[ci].name,juggler[ji].pindex,juggler[ji].name,label); \
 	   for (i=0;i<=JperC;i++) \
 		fprintf(output,"%u:%04hu:%1hu:%05hu ",i, \
@@ -276,9 +277,9 @@ assign_juggler(unsigned short ji,int depth)
 	       {
 	       counter['t']++;
 	       ShowAssignments(__LINE__,'3',"tryti")
-	       if (depth<lowestTieDepth)
+	       if (lowestTieDepth>=depth)
 		  {
-	          depth=lowestTieDepth;
+	          lowestTieDepth=depth;
 	          ShowAssignments(__LINE__,'l',"lowti")
 		  }
 	       }
@@ -407,14 +408,24 @@ main(int argc, char **argv, char **arge)
 	    count_preferences(ji);
 	    juggler[ji].pindex=0;
 	    }
-	for (;currJuggler<jugglers;)
+	for (unassigned=0,failed_juggler=-1;currJuggler<jugglers;)
 	    if (assign_juggler(currJuggler,0))	/* true (non zero) return */
 	       {
+	       unassigned++;
 	       if (output && verbose['#'])	
-	          fprintf(output,"%5u: %u unable to assign %s\n",__LINE__,unassigned,juggler[ji].name);
+	          fprintf(output,"%5u: %u unable to assign %s\n",__LINE__,unassigned,juggler[failed_juggler].name);
 	       }
 	      else
-	       fprintf(stderr,"Unable to assign %s\n",juggler[currJuggler].name);
+	       {
+	       if (failed_juggler!=-1)
+		  {
+		  unassigned++;
+		  fprintf(stderr,"%5u: %u unable to assign %s\n",__LINE__,unassigned,juggler[failed_juggler].name);
+	          if (failed_juggler==currJuggler)
+		     currJuggler++;
+	          failed_juggler=-1;
+		  }
+	       }
 	/* macro function because I may want to use this again */
 #define CHECK_STATS(line) \
 	if (output && verbose['a']) fprintf(output,"%5u: Assignments:\t %5u\n",line,counter['a']); \
@@ -492,9 +503,9 @@ main(int argc, char **argv, char **arge)
 	if (output && verbose['p'])
 	   {
 	   if ((pdist=calloc(sizeof(pdist[0]),maxpref+1))==NULL)
-	      return(fprintf(output,"%5u: unable to allocate int pdist[%d] array \n",__LINE__,pdist+1));
+	      return(fprintf(output,"%5u: unable to allocate int pdist[%d] array \n",__LINE__,maxpref+1));
 
-	   for (ji=0;ji<JUGGLERS;ji++)
+	   for (ji=0;ji<jugglers;ji++)
 	       pdist[juggler[ji].pindex]++;
 
 	   fprintf(output,"%5u: Juggler preference index distribution\n",__LINE__);
@@ -513,7 +524,7 @@ main(int argc, char **argv, char **arge)
 		     fprintf(output,"%u+%hu\n",email_name,circuit[ci].uTS[i].us.juggler);
 	          email_name+=(int)circuit[ci].uTS[i].us.juggler;
 		  }
-	   fprintf(output,"%u unassigned of %u, email the results to %u@yodle.com\n",unassigned,JUGGLERS,email_name); 
+	   fprintf(output,"%u unassigned of %u, email the results to %u@yodle.com\n",unassigned,jugglers,email_name); 
 	   }
 	return(0);
 	}
