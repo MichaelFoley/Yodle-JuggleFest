@@ -7,6 +7,14 @@
  *	I'm assuming someone at Yodle wrote the program to generate the output in the sample.
  *	if that's a bad assumption then I have no way to validate my answers.
  *	Another assumption, the LEAST popular circuits must still be one of the preferences of C/J jugglers 
+ *
+ *	it's working, hope it's the right answer 28762@yodle.com here I come
+ *
+ *	double checking, it has many failures, which I'll also submit.
+ *
+ *	Leaving debugging printf statements, #defining them out with OBSOLETE
+ *
+ *	when you run, redirect stderr to /dev/null or a file, it's not empty, there are errors
  */
 
 #include <stdio.h>
@@ -20,7 +28,7 @@ struct Circuit {
 	union ToSort {
 		unsigned long long ull;
 		struct {
-			unsigned short used,filler,juggler,dot_product;
+			unsigned short used,pindex,juggler,dot_product;
 			} us;
 		} *uTS;
 	/* pointer to allocated juggler/dot_product array, sized by jugglers/circuits */
@@ -74,15 +82,12 @@ qsort_uTS(const void *a, const void *b)
 	      rc=-1;
 	     else
 	      rc=0;
-#ifdef NEVER
-	printf("qsort: a 0x%016llx b 0x%016x rc=%2d\n",uTSa->ull,uTSb->ull,rc);
-#endif
 	return(rc);
 	}
 
 static short JperC;	/* Jugglers per Circuit, calculated from array sizes in main() */
 
-static FILE *output;
+static FILE *output;	/* so I can hijack stderr calls */
 
 static int
 assign_juggler(unsigned short ji)
@@ -99,9 +104,9 @@ assign_juggler(unsigned short ji)
 				__LINE__,ci,JperC+1));
 	   }
 	circuit[ci].uTS[JperC].us.dot_product=Dot_Product(circuit[ci],juggler[ji]);
+	circuit[ci].uTS[JperC].us.pindex=PREFERENCES-juggler[ji].pindex;
 	circuit[ci].uTS[JperC].us.juggler=ji;
 	circuit[ci].uTS[JperC].us.used=0xbeef;
-	circuit[ci].uTS[JperC].us.filler=0xdead;
 #ifdef OBSOLETE
 	printf("Circuit %s added %s:%hu\n",
 		circuit[ci].name,juggler[ji].name,circuit[ci].uTS[JperC].us.dot_product);
@@ -116,34 +121,54 @@ assign_juggler(unsigned short ji)
 #endif
 	   juggler[ji].pindex++;
 	   if (assign_juggler(ji))				/* non zero return is failure, report */
-	      return(fprintf(output,"%5u: Unable to reassign Juggler[%hu] %s\n",
-				__LINE__,ji,juggler[ji].name));
+	      return(fprintf(output,"%5u: Unable to reassign Juggler[%hu] %s to Circuit[%hu] %s\n",
+				__LINE__,ji,juggler[ji].name,ci,circuit[ci].name));
 	   }
 	return(0);	/* successful assignment and any recursive reassignments */
 	}
 
+static int
+count_preferences(unsigned short ji)
+	{
+	unsigned short ci;
+	if (juggler[ji].prefstring[juggler[ji].pindex]==NULL)
+	   return(0);
+	ci=(unsigned short)atoi(&juggler[ji].prefstring[juggler[ji].pindex][1]);
+	circuit[ci].preferred++;
+	   juggler[ji].pindex++;
+	return(count_preferences(ji));
+	}
+
 int
-main()	/* no arguments needed, input is #included at compile time, output to stdout */
+main()	/* no arguments needed, input is #included at compile time, output to stdout, errors to stderr */
 	{
 	int j,i,ci,ji,pi;	/* index variables through circuit, juggler, and preferences */
 	char *cptr;
 
 	JperC=(sizeof(juggler)/sizeof(juggler[0]))/(sizeof(circuit)/sizeof(circuit[0]));
 
-	output=stdout;	/* change to stderr for release */
+	output=stderr;	/* change to stderr for release */
 
 	for (ji=0;ji<(sizeof(juggler)/sizeof(juggler[0]));ji++)
 	    {
 	    juggler[ji].pindex=0;
+#ifdef PREF_AUDIT
+	    count_preferences(ji);
+#else
 	    if (assign_juggler(ji))	/* true (non zero) return */
 		fprintf(output,"%5u: unable to assign juggler[%hu] %s\n",__LINE__,ji,juggler[ji].name);
+#endif
 	    }
 	for (ci=0;ci<(sizeof(circuit)/sizeof(circuit[0]));ci++)
 	    {
+#ifdef PREF_AUDIT
+	    printf("%u %s ",circuit[ci].preferred,circuit[ci].name);
+#else
 	    printf("%s ",circuit[ci].name);
 	    if (circuit[ci].uTS)		/* if we tried to assign any jugglers ... */
 	       for (i=0;i<JperC;i++)
 		   {
+#ifdef EXPECTED_OUTPUT
 		   if (i)
 		     printf(", ");
 		   if (circuit[ci].uTS[i].ull)	/* non zero uTS elements are assigned jugglers */
@@ -157,7 +182,21 @@ main()	/* no arguments needed, input is #included at compile time, output to std
 		          printf(" %s:%hu",cptr,Dot_Product(circuit[j],juggler[ji]));
 			  }
 		      }
+#else /* EXPECTED_OUTPUT */
+		   if (circuit[ci].uTS[i].ull)	/* non zero uTS elements are assigned jugglers */
+		      {
+		      ji=circuit[ci].uTS[i].us.juggler;
+		      printf("\t%016llx\t%s\t ujpd %4hx %4hx %4hx %4hx\n",
+			circuit[ci].uTS[i].ull,
+			juggler[ji].name,
+			circuit[ci].uTS[i].us.used,
+			circuit[ci].uTS[i].us.juggler,
+			circuit[ci].uTS[i].us.pindex,
+			circuit[ci].uTS[i].us.dot_product);
+		      }
+#endif /* EXPECTED_OUTPUT */
 		   }
+#endif
 	    printf("\n");
 	    }
 	return(0);
