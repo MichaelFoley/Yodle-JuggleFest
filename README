@@ -1,2 +1,59 @@
 My attempt to solve the Yodle.com careers Juggle Festival puzzle
 
+Michael Foley, jugglefest circuit assignment 
+
+it's easier to have the makefile rip the circuit and juggler information into 
+structure array initializationsthan to write the parser for the file.
+I can also have the Makefile rip the 3 circuit 12 juggler sample for testing.
+I'm assuming someone at Yodle wrote the program to generate the output in the sample.
+if that's a bad assumption then I have no way to validate my answers.
+Another assumption, the LEAST popular circuits must still be one of the preferences of C/J jugglers 
+
+I will include the jugglers.sed and circuits.sed scripts along with Makefile and jugglefest.c
+
+Created _jugglefest and _lil_jugglefest targets in Makefile to resolve preprocessing issues.
+
+Juggler preference and then Dot Product rankings against Circuits are my only criteria for assignment,
+Jugglers will be assigned to Circuits in their preference lists, in order. Jugglers will only be pushed
+out of a circuit and reassigned further down their preference lists by 6 jugglers with higher rankings.
+
+ShowAssignments macro function with verbose trigger logic added
+
+it's working, hope it's the right answer 28762@yodle.com here I come
+
+Double checking output, it has many failures, 188 Jugglers exhaust their preference lists, meaning they
+are not among the 6 jugglers with the highest Dot Product for any circuits in their preference lists.
+There are at least 6 jugglers that ranked higher in each case.
+
+not specifying -o or -e disables all output except the circuit list required
+
+Changing logic, successful assignment, via successful reassignment of any juggler pushed out of a circuit
+now causes recursion with the next juggler, successful return from total recursion only happens when ALL
+Jugglers assigned.
+
+The recursion logic will attempt to resolve ties for last place assignments in every possible way
+in an effort to place ALL jugglers in the festival. The option -vl reports retries.
+
+Total recursion version has been running for days on Raspberry Pi, building Ubuntu Laptop for second
+development platform, it'll be faster. Now it's been running for 2 Days. It passed the RPi but is 
+still chugging away.
+
+Debugged total recursion version, stopping after each recursion through C1970 to check list
+-v_ will do this now, shows no change to C1970, makes sense...
+
+C1970 is the only circuit with H:10 E:10 P:10, the highest values for all the circuits
+The only 6 Jugglers with 10,10,10 will each score a dot product of 300, all others will be reassigned 
+further down their respective preference lists.
+None of the 188 Jugglers who fail to assign with -f will affect C1970 when we run without -f and recur
+through all possible resolutions of ties.
+My best hope for the non -f version is that it will find the correct combination of resolutions of ties
+to assign ALL the jugglers somewhere, if not it will recur all the way back to failing to assign Juggler J0.
+
+None of the failures will change the list in C1970 and thereby the email address for submission
+I am submitting the output of the -f version to Yodle, I'll probably let the non -f version
+continue to run at least through the holidays, maybe until I hear from Yodle.
+
+A quick google for Jugglefest finds some GitHub repositories for solutions, some have the same Juggler
+list for C1970, some have jugglers assigned to circuits that aren't in their preference lists.
+Considering having my solution rip others output files for comparison, maybe after submitting.
+
