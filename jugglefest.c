@@ -1,27 +1,7 @@
 /*
- *	Michael Foley, jugglefest circuit assignment easy version
+ *	Michael Foley, jugglefest circuit assignment 
  *
- *	it's easier to have the makefile rip the circuit and juggler information into 
- *	structure array initializations	than to write the parser for the file.
- *	I can also have the Makefile rip the 3 circuit 12 juggler sample for testing.
- *	I'm assuming someone at Yodle wrote the program to generate the output in the sample.
- *	if that's a bad assumption then I have no way to validate my answers.
- *	Another assumption, the LEAST popular circuits must still be one of the preferences of C/J jugglers 
- *
- *	it's working, hope it's the right answer 28762@yodle.com here I come
- *
- *	double checking, it has many failures, which I'll also submit.
- *
- *	Leaving debugging printf statements, #defining them out with OBSOLETE
- *
- *	when you run, redirect stderr to /dev/null or a file, it's not empty, there are errors
- *
- *	After bouncing the problem with assignment failures off Sam we've decided the assignment
- *	failure message is inaccurate, only the un-line-numbered message is true, the others are
- *	successful reassignments.
- * 	
- *	My code also currently fails to properly account for ties in the dot product when recurring.
- *	That will now be rectified
+ *	moved progress comments from here to README file
  *
  */
 
@@ -33,8 +13,8 @@
 #include <errno.h>
 
 static int verbose[256]={0};	/* verbose modes off by default, turn on with -v */
-static int silence[256]={0};	/* if non zero DISABLES some feature that is on by default, -s arg */
 static int counter[256]={0};	/* counts of verbose message occurences */
+static int silence[256]={0};	/* if non zero DISABLES some feature that is on by default, -s arg */
 
 struct Circuit {
 	char *name;
@@ -115,12 +95,10 @@ static int strict_rule=1;
 static unsigned long long calls_report=0;
 static unsigned long long calls_interval=1000;
 static unsigned long long sum=0,total=0;
-static struct {
-	unsigned int depth,count;
-	} upper={18322,0},lower={32648,0},kick={0,10};	/* only initializing kick structure */
 
 static int fail_jugglers=0;	/* switched by -f argument */
 static short failed_juggler=-1;	/* only meaningful if assign_juggler returns error to main */
+static int email_target_circuit=-1;
 
 static int
 assign_juggler(unsigned short ji,int depth)
@@ -146,6 +124,8 @@ assign_juggler(unsigned short ji,int depth)
 			++counter['f'],juggler[ji].name);
 	   if (lowestTieDepth==0)
 	      lowestTieDepth=depth;	/* don't start checking until we have our first exhausted juggler */
+	   if (fail_jugglers)
+	      currJuggler++;
 	   return(1-fail_jugglers);	/* return failure to assign, or success regarless if fail_jugglers==1 */
 	   }
 	ci=(unsigned short)atoi(&juggler[ji].prefstring[juggler[ji].pindex][1]);
@@ -184,7 +164,7 @@ assign_juggler(unsigned short ji,int depth)
 #define ShowAssignments(line,trigger,label) \
 	if ((output) && (verbose[trigger])) \
 	   { \
-	   fprintf(output,"%5u: %7u -v%c %18llu %5u %4d %5hu %-5s %2hd %-6s @%s ", \
+	   fprintf(output,"%5u: %7u -v%c %18llu %5u %6d %5hu %-5s %2hd %-6s @%s ", \
 			line,++counter[trigger],trigger,calls,depth,depth-currJugglerDepth,currJuggler,circuit[ci].name,juggler[ji].pindex,juggler[ji].name,label); \
 	   for (i=0;i<=JperC;i++) \
 		fprintf(output,"%u:%04hu:%1hu:%05hu ",i, \
@@ -197,42 +177,8 @@ assign_juggler(unsigned short ji,int depth)
 	circuit[ci].uTS[JperC].us.juggler=ji;
 	circuit[ci].uTS[JperC].us.dot_product=Dot_Product(circuit[ci],juggler[ji]);
 	circuit[ci].uTS[JperC].us.used=0xabba;
-	if ((output) && (verbose['a']))
-	   fprintf(output,"%5u: %u -va Circuit %s added %s:%hu\n",__LINE__,++counter['a'],
-			circuit[ci].name,juggler[ji].name,circuit[ci].uTS[JperC].us.dot_product);
 	for (rc=0,ties=0;;ties++)	/* by default we expect to succeed */
 	    {
-	    if (kick.depth)
-	       {
-	       upper.depth=lower.depth=depth;
-	       upper.count=lower.count=0;
-	       kick.depth=0;
-	       }
-	    if (depth<lower.depth)
-	       {
-	       lower.depth=depth;
-	       lower.count=0;
-	       ShowAssignments(__LINE__,'k',"lower")
-	       }
-	    if (depth==lower.depth)
-	       lower.count++;
-#ifdef NEVER
-	    if (depth>upper.depth)
-	       {
-	       upper.depth=depth;
-	       upper.count=0;
-	       ShowAssignments(__LINE__,'k',"upper")
-	       }
-	    if (depth==upper.depth)
-	       upper.count++;
-	    if ((upper.count==kick.count) || (lower.count==kick.count))
-#else /* NEVER */
-	    if (lower.count==kick.count)
-#endif /* NEVER */
-	       {
-	       ShowAssignments(__LINE__,'k',"sleep")
-	       if (verbose['k']) sleep(300);
-	       }
 	    qsort(circuit[ci].uTS,JperC+1,sizeof(circuit[ci].uTS[0]),qsort_uTS); 
 	    ShowAssignments(__LINE__,'0',"qsort")
 	    if (circuit[ci].uTS[JperC].ull==0)	/* if we have successfully assigned ji continue down juggler list */
@@ -326,6 +272,8 @@ assign_juggler(unsigned short ji,int depth)
 	if (uTS)
 	   free(uTS);	/* free whichever assignment array is NOT hanging off circuit */
 	ShowAssignments(__LINE__,'9',"rturn")
+	if (ci==email_target_circuit)
+	   ShowAssignments(__LINE__,'_',"email")
 	return(rc);	/* done recurring to this level and circuit */
 	}	/* end of assign_juggler(unsigned short ji, unsigned int depth) */
 
@@ -346,41 +294,54 @@ main(int argc, char **argv, char **arge)
 	{
 	short j,i,ci,ji,pi;	/* index variables through circuit, juggler, and preferences */
 	char *cptr,*s;
-	int c,*distribution,email_target_juggler,email_name,reverse,bump,unassigned,*pdist;
+	int c,*distribution,email_name,unassigned,*pdist;
 
 	setbuf(stdin,NULL);
 	setbuf(stdout,NULL);
 	setbuf(stderr,NULL);
 
 	output=NULL;
-	email_target_juggler=1970;
-	reverse=0;
-	bump=0;
+	email_target_circuit=1970;
 	jugglers=JUGGLERS;
 
-	for (optarg=NULL,j=0;(c=getopt(argc,argv,"B:b:C:c:EeFfHhJ:j:K:k:LlOoRrS:s:T:t:V:v:?"))!=-1;)
+	for (optarg=NULL,j=0;(c=getopt(argc,argv,"C:c:EeFfHhJ:j:K:k:LlOoRrS:s:T:t:V:v:?"))!=-1;)
 	    {
 	    if (output && verbose['.'])
 	       fprintf(output,optarg?"%5u:\t -%c %s\n":"%5u: -%c\n",__LINE__,c,optarg);
 	    switch (c)
 		   {
 	      case '?': case 'H': case 'h':
-		   printf("Usage: %s <-jJuggler> -e -o -s<flags> -v<flags>\n",argv[0]); break;
+		   printf("Usage: %s -t<Circuit> -e -o -f -c<interval> -s<flags> -v<flags>\n",argv[0]);
+		   printf("\t\t-l\t\tLoosens strict assignment rule, tries to push jugglers down preference list to fit all jugglers in festival, incomplete\n");
+		   printf("\t\t-f\t\tFails jugglers who exhaust preference lists instead of using total recursion to try and fit all by resolving ties, see README\n");
+		   printf("\t\t-o\t\tPuts verbose output messages on stdout, messages go nowhere by default, conflicts with -e\n");
+		   printf("\t\t-e\t\tPuts verbose output messages on stderr, messages go nowhere by default, conflicts with -o\n");
+		   printf("\t\t-e\t\tPuts verbose output messages on stderr, messages go nowhere by default, conflicts with -o\n");
+		   printf("\t\t-t<Circuit>\tChanges circuit used to calculate submission email address. Defaults to 1970\n");
+		   printf("\t\t-c<interval>\tInterval at which to report recursive call statistics. Defaults to 0 and doesn't report\n");
+		   printf("\t\t-j<Jugglers>\tHow many of the jugglers to attemp to assign. Defaults to ALL\n");
+		   printf("\t\t-s<flags>\tSilence output optionally, sort of the opposite of verbose.\n");
+		   printf("\t\t\t-s:\tTerse output, just comma separated juggler names.\n");
+		   printf("\t\t-v<flags>\tVerbose output.\n");
+		   printf("\t\t\t-v@\tDisplay calculated email address for target circuit\n");
+		   printf("\t\t\t-v+\tDisplay calculation for email address for target circuit\n");
+		   printf("\t\t\t-v_\tDebugging data for email address target circuit\n");
+		   printf("\t\t\t-vr\tReassignment message\n");
+		   printf("\t\t\t-vw\tWeighted ties tried message\n");
+		   printf("\t\t\t-vu\tUnable to assign Juggler message from main\n");
+		   printf("\t\t\t-vd\tDisplay Circuit distribution, how many jugglers end up on each circuit\n");
+		   printf("\t\t\t-vp\tDisplay preference index distribution, counts for how many jugglers ended up how far down preference list, or exhausting it.\n");
+		   printf("\t\t\t-v,\tPrefixes output with count of how many jugglers preferred each circuit.\n");
+		   printf("\t\t\t-vl\tDisplay lowest recursion level debugging data\n");
+		   printf("\t\t\t-v0-9\tDebugging data at decision points in recursion logic\n");
+		   break;
 	      case 'C': case 'c': calls_report=calls_interval=(unsigned long long)atol(optarg); break;
-	      case 'T': case 't': email_target_juggler=atoi(optarg); break;
-	      case 'B': case 'b': bump=atoi(optarg); break;
+	      case 'T': case 't': email_target_circuit=atoi(optarg); break;
 	      case 'J': case 'j': jugglers=(unsigned short)atoi(optarg); break;
 	      case 'L': case 'l': strict_rule=0; break;	/* loosen strict rule, after failure, retry pushing juggler down preference list */
 	      case 'F': case 'f': fail_jugglers=1; break;	/* fail jugglers who exhaust their preference list, instead of backing up to retry ties */
-	      case 'K': case 'k':
-			upper.depth=kick.depth=atol(optarg);
-			s=strchr(optarg,',');
-			if (s)
-			   kick.count=atol(++s);
-			break;	/* kick logic to detect looping recursion */
 	      case 'E': case 'e': output=stderr; break;
 	      case 'O': case 'o': output=stdout; break;
-	      case 'R': case 'r': reverse=1-reverse; break;
 	
 	      case 'S': case 's':
 		   for (s=optarg;*s;s++)
@@ -412,7 +373,7 @@ main(int argc, char **argv, char **arge)
 	    if (assign_juggler(currJuggler,0))	/* true (non zero) return */
 	       {
 	       unassigned++;
-	       if (output && verbose['#'])	
+	       if (output && verbose['u'])	
 	          fprintf(output,"%5u: %u unable to assign %s\n",__LINE__,unassigned,juggler[failed_juggler].name);
 	       }
 	      else
@@ -420,7 +381,8 @@ main(int argc, char **argv, char **arge)
 	       if (failed_juggler!=-1)
 		  {
 		  unassigned++;
-		  fprintf(stderr,"%5u: %u unable to assign %s\n",__LINE__,unassigned,juggler[failed_juggler].name);
+	          if (output && verbose['u'])	
+		     fprintf(output?output:stderr,"%5u: %u unable to assign %s\n",__LINE__,unassigned,juggler[failed_juggler].name);
 	          if (failed_juggler==currJuggler)
 		     currJuggler++;
 	          failed_juggler=-1;
@@ -428,7 +390,6 @@ main(int argc, char **argv, char **arge)
 	       }
 	/* macro function because I may want to use this again */
 #define CHECK_STATS(line) \
-	if (output && verbose['a']) fprintf(output,"%5u: Assignments:\t %5u\n",line,counter['a']); \
 	if (output && verbose['f']) fprintf(output,"%5u: Failures:\t %5u\n",line,counter['f']); \
 	if (output && verbose['r']) fprintf(output,"%5u: Reassignments:\t %5u\n",line,counter['r']); \
 	if (output && verbose['s']) fprintf(output,"%5u: Ties:\t %5u\n",line,counter['t']); \
@@ -513,10 +474,9 @@ main(int argc, char **argv, char **arge)
 	       fprintf(output,"%5u: %2u: %5u\n",__LINE__,i,pdist[i]);
 	   }
 	    
-	    
 	if (output && verbose['@'])	/* calculate email address */
 	   {
-	   ci=email_target_juggler;
+	   ci=email_target_circuit;
 	   for (email_name=i=0;i<JperC;i++)
 	       if (circuit[ci].uTS[i].ull)	/* non zero uTS elements are assigned jugglers */
 		  {
