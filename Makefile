@@ -95,6 +95,9 @@ _jugglefest.o: _jugglefest.c
 _jugglefest: _jugglefest.o
 	gcc -g -o $@ $?
 
+jugglefest-Ofast: jugglefest.c $(BIG_FILES)
+	gcc -time -o $@ jugglefest.c -DBIG -Ofast
+
 jugglefest: jugglefest.c $(BIG_FILES)
 	gcc -g -time -o $@ jugglefest.c -DBIG 
 
